@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'pantalla_inicio.dart'; // Asegúrate de tener este archivo creado
+import 'pantalla_inicio.dart'; // Conexión vital con el nuevo menú
 
 class PantallaLogin extends StatefulWidget {
   const PantallaLogin({super.key});
@@ -26,6 +26,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
       );
 
       if (mounted) {
+        // AQUÍ ESTÁ LA CLAVE: Te lleva a la pantalla con el Menú Lateral
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const PantallaInicio()),
@@ -57,16 +58,11 @@ class _PantallaLoginState extends State<PantallaLogin> {
 
   @override
   Widget build(BuildContext context) {
-    // Definimos el color dorado para usarlo fácil
+    // Definimos el color dorado
     const colorDorado = Color(0xFFD4AF37);
 
     return Scaffold(
-      backgroundColor: const Color.fromARGB(
-        255,
-        0,
-        0,
-        0,
-      ), // Gris oscuro (RGB 75,75,75)
+      backgroundColor: Colors.black, // Tu fondo negro
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
@@ -75,15 +71,11 @@ class _PantallaLoginState extends State<PantallaLogin> {
             children: [
               // --- TU LOGO ---
               Container(
-                height:
-                    250, // Ajusté un poco el tamaño para que no desborde en pantallas chicas
+                height: 250,
                 width: 250,
                 decoration: BoxDecoration(
                   color: Colors.black,
-                  border: Border.all(
-                    color: const Color.fromARGB(255, 0, 0, 0),
-                    width: 3,
-                  ),
+                  border: Border.all(color: Colors.black, width: 3),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.3),
@@ -91,7 +83,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
                       offset: const Offset(0, 5),
                     ),
                   ],
-                  // Asegúrate de que esta imagen exista en pubspec.yaml
+                  // Asegúrate de que la imagen esté en assets
                   image: const DecorationImage(
                     image: AssetImage('assets/blanco.png'),
                     fit: BoxFit.contain,
@@ -104,7 +96,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
               const Text(
                 "FUNERALES ARIS",
                 style: TextStyle(
-                  fontSize: 32, // Un poco más pequeño para evitar overflow
+                  fontSize: 32,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1.5,
                   color: Colors.white,
@@ -114,37 +106,24 @@ class _PantallaLoginState extends State<PantallaLogin> {
               const SizedBox(height: 10),
               const Text(
                 "Ingresa tus credenciales",
-                style: TextStyle(color: Color.fromARGB(255, 255, 255, 255)),
+                style: TextStyle(color: Colors.white),
               ),
               const SizedBox(height: 40),
 
               // INPUT EMAIL
               TextField(
                 controller: _emailController,
-                style: const TextStyle(
-                  color: Color.fromARGB(255, 255, 255, 255),
-                ), // IMPORTANTE: Texto blanco
+                style: const TextStyle(color: Colors.white), // Texto blanco
                 keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(
                   labelText: "Correo Electrónico",
-                  labelStyle: TextStyle(
-                    color: Color.fromARGB(255, 255, 255, 255),
-                  ),
-                  prefixIcon: Icon(
-                    Icons.email_outlined,
-                    color: Color.fromARGB(255, 255, 255, 255),
-                  ),
-                  // Bordes personalizados para fondo oscuro
+                  labelStyle: TextStyle(color: Colors.white),
+                  prefixIcon: Icon(Icons.email_outlined, color: Colors.white),
                   enabledBorder: OutlineInputBorder(
-                    borderSide: BorderSide(
-                      color: Color.fromARGB(255, 255, 255, 255),
-                    ),
+                    borderSide: BorderSide(color: Colors.white),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(
-                      color: Color.fromRGBO(212, 175, 55, 1),
-                      width: 2,
-                    ),
+                    borderSide: BorderSide(color: colorDorado, width: 2),
                   ),
                 ),
               ),
@@ -154,29 +133,16 @@ class _PantallaLoginState extends State<PantallaLogin> {
               TextField(
                 controller: _passwordController,
                 obscureText: true,
-                style: const TextStyle(
-                  color: Color.fromARGB(255, 255, 255, 255),
-                ), // IMPORTANTE: Texto blanco
+                style: const TextStyle(color: Colors.white), // Texto blanco
                 decoration: const InputDecoration(
                   labelText: "Contraseña",
-                  labelStyle: TextStyle(
-                    color: Color.fromARGB(255, 255, 255, 255),
-                  ),
-                  prefixIcon: Icon(
-                    Icons.lock_outline,
-                    color: Color.fromARGB(255, 255, 255, 255),
-                  ),
-                  // Bordes personalizados para fondo oscuro
+                  labelStyle: TextStyle(color: Colors.white),
+                  prefixIcon: Icon(Icons.lock_outline, color: Colors.white),
                   enabledBorder: OutlineInputBorder(
-                    borderSide: BorderSide(
-                      color: Color.fromARGB(255, 255, 255, 255),
-                    ),
+                    borderSide: BorderSide(color: Colors.white),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(
-                      color: Color.fromARGB(255, 212, 175, 55),
-                      width: 2,
-                    ),
+                    borderSide: BorderSide(color: colorDorado, width: 2),
                   ),
                 ),
               ),
@@ -189,19 +155,11 @@ class _PantallaLoginState extends State<PantallaLogin> {
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _iniciarSesion,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color.fromARGB(
-                      255,
-                      212,
-                      175,
-                      55,
-                    ), // Fondo blanco
-                    foregroundColor:
-                        Colors.black, // Texto negro (mejor contraste)
+                    backgroundColor: colorDorado, // Fondo dorado
+                    foregroundColor: Colors.black, // Texto negro
                     elevation: 5,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        5,
-                      ), // Bordes menos redondos (estilo serio)
+                      borderRadius: BorderRadius.circular(5),
                     ),
                   ),
                   child: _isLoading

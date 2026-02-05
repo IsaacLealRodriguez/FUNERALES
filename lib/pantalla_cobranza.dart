@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'pantalla_historial.dart'; // Asegúrate de que este archivo existe y tiene PantallaDetalleContrato
+import 'pantalla_detalle_contrato.dart';
+import 'pantalla_nuevo_contrato.dart';
 
 class PantallaCobranza extends StatefulWidget {
   const PantallaCobranza({super.key});
@@ -252,6 +253,25 @@ class _PantallaCobranzaState extends State<PantallaCobranza> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _colorFondo,
+
+      // >>> AQUÍ AGREGAMOS EL BOTÓN FLOTANTE <<<
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: _colorDorado,
+        icon: const Icon(Icons.person_add, color: Colors.black),
+        label: const Text(
+          "NUEVO",
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
+        onPressed: () {
+          // Navegar a la pantalla de nuevo contrato y recargar al volver
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const PantallaNuevoContrato()),
+          ).then((_) => _cargarTodosLosContratos());
+        },
+      ),
+
+      // >>> FIN DEL BOTÓN FLOTANTE <<<
       appBar: AppBar(
         title: const Text(
           "CARTERA DE CLIENTES",
@@ -366,8 +386,10 @@ class _PantallaCobranzaState extends State<PantallaCobranza> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    PantallaDetalleContrato(contrato: c),
+                                builder: (_) => PantallaDetalleContrato(
+                                  contrato: c,
+                                  cliente: {},
+                                ),
                               ),
                             );
                           },
@@ -481,6 +503,7 @@ class _PantallaCobranzaState extends State<PantallaCobranza> {
                                                 builder: (_) =>
                                                     PantallaDetalleContrato(
                                                       contrato: c,
+                                                      cliente: {},
                                                     ),
                                               ),
                                             );

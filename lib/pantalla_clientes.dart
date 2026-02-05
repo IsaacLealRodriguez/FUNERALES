@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart'; // NECESARIO PARA LLAMAR
+import 'pantalla_contratos_cliente.dart'; // La pantalla nueva que acabamos de crear
 
 class PantallaClientes extends StatefulWidget {
   const PantallaClientes({super.key});
@@ -9,183 +11,70 @@ class PantallaClientes extends StatefulWidget {
 }
 
 class _PantallaClientesState extends State<PantallaClientes> {
-  List<Map<String, dynamic>> _clientes = [];
-  bool _cargando = true;
-  String? _funerariaId;
+  final TextEditingController _searchController = TextEditingController();
+  String _filtro = "";
 
-  // CONSTANTES DE DISEÑO
-  final Color _colorFondo = Colors.black;
-  final Color _colorDorado = const Color(0xFFD4AF37);
-  final Color _colorCard = const Color(
-    0xFF1E1E1E,
-  ); // Un gris muy oscuro para las tarjetas
-  final Color _colorTextoBlanco = Colors.white;
+  // CAMBIO 1: Ordenamos por 'nombre_contacto' (Titular) para que la lista sea alfabética por quien paga
+  final _clientesStream = Supabase.instance.client
+      .from('clientes')
+      .stream(primaryKey: ['id'])
+      .order('nombre_contacto', ascending: true);
 
-  @override
-  void initState() {
-    super.initState();
-    _cargarClientes();
-  }
-
-  Future<void> _cargarClientes() async {
-    try {
-      final userId = Supabase.instance.client.auth.currentUser!.id;
-
-      final datosFuneraria = await Supabase.instance.client
-          .from('funerarias')
-          .select('id')
-          .eq('user_id', userId)
-          .single();
-
-      _funerariaId = datosFuneraria['id'].toString();
-
-      final response = await Supabase.instance.client
-          .from('clientes')
-          .select()
-          .eq('funeraria_id', _funerariaId!)
-          .order('created_at', ascending: false);
-
-      if (mounted) {
-        setState(() {
-          _clientes = List<Map<String, dynamic>>.from(response);
-          _cargando = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _cargando = false);
-        // SnackBar de error con estilo
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              "Error: $e",
-              style: const TextStyle(color: Colors.white),
-            ),
-            backgroundColor: Colors.red[900],
-          ),
-        );
-      }
-    }
-  }
-
-  // Estilo común para los inputs del diálogo
-  InputDecoration _inputDecoration(String label, IconData icon) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(color: Colors.white70),
-      prefixIcon: Icon(icon, color: _colorDorado),
-      enabledBorder: const OutlineInputBorder(
-        borderSide: BorderSide(color: Colors.white54),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderSide: BorderSide(color: _colorDorado, width: 2),
-      ),
-    );
-  }
-
-  void _mostrarFormularioAgregar() {
-    if (_funerariaId == null) {
+  // --- FUNCIÓN PARA LLAMAR ---
+  Future<void> _hacerLlamada(String? telefono) async {
+    if (telefono == null || telefono.isEmpty || telefono.length < 7) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Esperando datos de la funeraria...")),
+        const SnackBar(
+          content: Text("No hay un número de teléfono válido registrado."),
+        ),
       );
       return;
     }
 
-    final nombreDifuntoCtrl = TextEditingController();
-    final nombreContactoCtrl = TextEditingController();
-    final telefonoCtrl = TextEditingController();
+    final Uri launchUri = Uri(scheme: 'tel', path: telefono);
+    try {
+      if (await canLaunchUrl(launchUri)) {
+        await launchUrl(launchUri);
+      } else {
+        throw 'No se pudo abrir el marcador';
+      }
+    } catch (e) {
+      debugPrint("Error llamada: $e");
+    }
+  }
 
+  void _confirmarEliminar(Map<String, dynamic> cliente) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: _colorCard, // Fondo oscuro para el diálogo
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(5),
-          side: BorderSide(color: _colorDorado, width: 1), // Borde fino dorado
+        backgroundColor: Colors.grey[900],
+        title: const Text(
+          "¿Eliminar Cliente?",
+          style: TextStyle(color: Colors.white),
         ),
-        title: Text(
-          "Nuevo Ingreso",
-          style: TextStyle(
-            color: _colorTextoBlanco,
-            fontWeight: FontWeight.bold,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nombreDifuntoCtrl,
-                style: TextStyle(color: _colorTextoBlanco),
-                cursorColor: _colorDorado,
-                decoration: _inputDecoration(
-                  "Nombre del Difunto",
-                  Icons.person_outline,
-                ),
-              ),
-              const SizedBox(height: 15),
-              TextField(
-                controller: nombreContactoCtrl,
-                style: TextStyle(color: _colorTextoBlanco),
-                cursorColor: _colorDorado,
-                decoration: _inputDecoration(
-                  "Familiar Responsable",
-                  Icons.family_restroom,
-                ),
-              ),
-              const SizedBox(height: 15),
-              TextField(
-                controller: telefonoCtrl,
-                style: TextStyle(color: _colorTextoBlanco),
-                cursorColor: _colorDorado,
-                keyboardType: TextInputType.phone,
-                decoration: _inputDecoration("Teléfono", Icons.phone),
-              ),
-            ],
-          ),
+        content: Text(
+          "Se eliminará al titular '${cliente['nombre_contacto']}'.\n\nSi tiene contratos, no se podrá borrar.",
+          style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text(
-              "Cancelar",
-              style: TextStyle(color: Colors.white54),
+              "CANCELAR",
+              style: TextStyle(color: Colors.white),
             ),
           ),
-          ElevatedButton(
-            onPressed: () async {
-              if (nombreDifuntoCtrl.text.isEmpty) return;
-
-              try {
-                await Supabase.instance.client.from('clientes').insert({
-                  'funeraria_id': _funerariaId,
-                  'nombre_difunto': nombreDifuntoCtrl.text,
-                  'nombre_contacto': nombreContactoCtrl.text,
-                  'telefono_contacto': telefonoCtrl.text,
-                  'fecha_fallecimiento': DateTime.now().toIso8601String(),
-                });
-
-                if (context.mounted) Navigator.pop(context);
-                _cargarClientes();
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text("Error: $e")));
-                }
-              }
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _eliminarCliente(cliente['id']);
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _colorDorado, // Fondo Dorado
-              foregroundColor: Colors.black, // Texto Negro
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(5),
-              ),
-            ),
             child: const Text(
-              "GUARDAR",
-              style: TextStyle(fontWeight: FontWeight.bold),
+              "ELIMINAR",
+              style: TextStyle(
+                color: Colors.redAccent,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -193,124 +82,239 @@ class _PantallaClientesState extends State<PantallaClientes> {
     );
   }
 
+  Future<void> _eliminarCliente(int idCliente) async {
+    try {
+      await Supabase.instance.client
+          .from('clientes')
+          .delete()
+          .eq('id', idCliente);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Cliente eliminado"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("No se puede borrar (Tiene historial)"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    const colorDorado = Color(0xFFD4AF37);
+
     return Scaffold(
-      backgroundColor: _colorFondo, // Negro Total
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text(
-          "LISTA DE CLIENTES",
-          style: TextStyle(letterSpacing: 1.2),
-        ),
-        centerTitle: true,
-        backgroundColor: Colors.black, // AppBar negra
-        foregroundColor: _colorDorado, // Título dorado
+        title: const Text("DIRECTORIO (TITULARES)"),
+        backgroundColor: Colors.black,
+        foregroundColor: colorDorado,
         elevation: 0,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1.0),
-          child: Container(
-            color: Colors.white12, // Línea sutil separadora
-            height: 1.0,
-          ),
+          child: Container(color: Colors.white12, height: 1),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _mostrarFormularioAgregar,
-        backgroundColor: _colorDorado,
-        child: const Icon(Icons.add, color: Colors.black),
-      ),
-      body: _cargando
-          ? Center(child: CircularProgressIndicator(color: _colorDorado))
-          : _clientes.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.person_off, size: 60, color: Colors.grey[800]),
-                  const SizedBox(height: 10),
-                  Text(
-                    "No hay clientes registrados",
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                ],
+      body: Column(
+        children: [
+          // --- BARRA DE BÚSQUEDA ---
+          Container(
+            padding: const EdgeInsets.all(15),
+            color: Colors.black,
+            child: TextField(
+              controller: _searchController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: "Buscar titular...",
+                hintStyle: const TextStyle(color: Colors.white38),
+                prefixIcon: const Icon(Icons.search, color: colorDorado),
+                suffixIcon: _filtro.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.white54),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _filtro = "");
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: const Color(0xFF1E1E1E),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: colorDorado, width: 1),
+                ),
               ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(15),
-              itemCount: _clientes.length,
-              itemBuilder: (context, index) {
-                final cliente = _clientes[index];
-                return Card(
-                  color: _colorCard, // Tarjeta gris oscuro
-                  elevation: 4,
-                  margin: const EdgeInsets.only(bottom: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      5,
-                    ), // Bordes rectos/serios
-                    side: BorderSide(color: Colors.white.withOpacity(0.1)),
+              onChanged: (val) {
+                setState(() {
+                  _filtro = val.toLowerCase();
+                });
+              },
+            ),
+          ),
+
+          // --- LISTA DE CLIENTES ---
+          Expanded(
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _clientesStream,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData)
+                  return const Center(
+                    child: CircularProgressIndicator(color: colorDorado),
+                  );
+
+                final clientes = snapshot.data!;
+                final clientesFiltrados = clientes.where((c) {
+                  final difunto = (c['nombre_difunto'] ?? "")
+                      .toString()
+                      .toLowerCase();
+                  final contacto = (c['nombre_contacto'] ?? "")
+                      .toString()
+                      .toLowerCase();
+                  return difunto.contains(_filtro) ||
+                      contacto.contains(_filtro);
+                }).toList();
+
+                if (clientesFiltrados.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      "No se encontraron resultados.",
+                      style: TextStyle(color: Colors.white38),
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 15,
+                    vertical: 5,
                   ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.all(15),
-                    leading: CircleAvatar(
-                      backgroundColor: _colorDorado,
-                      radius: 25,
-                      child: const Icon(
-                        Icons.person,
-                        color: Colors.black,
-                        size: 30,
+                  itemCount: clientesFiltrados.length,
+                  itemBuilder: (context, index) {
+                    final c = clientesFiltrados[index];
+
+                    // Preparamos variables para mejor lectura
+                    final nombreTitular = c['nombre_contacto'] ?? "Sin Nombre";
+                    final nombreDifunto = c['nombre_difunto'] ?? "N/A";
+                    final telefono = c['telefono'] ?? "Sin tel";
+
+                    return Card(
+                      color: const Color(0xFF1E1E1E),
+                      elevation: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: Colors.white.withOpacity(0.05)),
                       ),
-                    ),
-                    title: Text(
-                      cliente['nombre_difunto'] ?? 'Sin nombre',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                        color: _colorTextoBlanco,
-                      ),
-                    ),
-                    subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.family_restroom,
-                                size: 14,
-                                color: _colorDorado,
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                "Familiar: ${cliente['nombre_contacto'] ?? '-'}",
-                                style: const TextStyle(color: Colors.white70),
-                              ),
-                            ],
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 15,
+                          vertical: 5,
+                        ),
+
+                        // LETRA INICIAL (Ahora basada en el Titular)
+                        leading: Container(
+                          width: 45,
+                          height: 45,
+                          decoration: BoxDecoration(
+                            color: Colors.black,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: colorDorado.withOpacity(0.5),
+                            ),
                           ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Icon(Icons.phone, size: 14, color: _colorDorado),
-                              const SizedBox(width: 5),
-                              Text(
-                                "Tel: ${cliente['telefono_contacto'] ?? '-'}",
-                                style: const TextStyle(color: Colors.white70),
-                              ),
-                            ],
+                          alignment: Alignment.center,
+                          child: Text(
+                            (nombreTitular.isNotEmpty ? nombreTitular[0] : "C")
+                                .toUpperCase(),
+                            style: const TextStyle(
+                              color: colorDorado,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
                           ),
-                        ],
+                        ),
+
+                        // CAMBIO 2: TÍTULO PRINCIPAL ES EL TITULAR
+                        title: Text(
+                          nombreTitular,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            fontSize: 16,
+                          ),
+                        ),
+
+                        // CAMBIO 3: EL DIFUNTO PASA AL SUBTÍTULO
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: Text(
+                            "Difunto: $nombreDifunto \n📞 $telefono",
+                            style: const TextStyle(
+                              color: Colors.white60,
+                              fontSize: 13,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                        isThreeLine: true,
+
+                        // --- ACCIONES (LLAMAR Y BORRAR) ---
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Botón de llamar
+                            IconButton(
+                              icon: const Icon(
+                                Icons.phone,
+                                color: Colors.green,
+                              ),
+                              onPressed: () => _hacerLlamada(c['telefono']),
+                              tooltip: 'Llamar',
+                            ),
+                            // Botón de borrar
+                            IconButton(
+                              icon: Icon(
+                                Icons.delete_outline,
+                                color: Colors.red[300],
+                              ),
+                              onPressed: () => _confirmarEliminar(c),
+                              tooltip: 'Eliminar',
+                            ),
+                          ],
+                        ),
+
+                        // --- AL TOCAR LA TARJETA, VA A LOS CONTRATOS ---
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  PantallaContratosCliente(cliente: c),
+                            ),
+                          );
+                        },
                       ),
-                    ),
-                    trailing: Icon(
-                      Icons.arrow_forward_ios,
-                      size: 16,
-                      color: _colorDorado,
-                    ),
-                  ),
+                    );
+                  },
                 );
               },
             ),
+          ),
+        ],
+      ),
     );
   }
 }

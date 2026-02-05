@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'pantalla_nuevo_contrato.dart';
+import 'pantalla_nuevo_contrato.dart'; // IMPORTANTE: Importa tu pantalla de contrato
 
 class PantallaPlanes extends StatefulWidget {
   const PantallaPlanes({super.key});
@@ -10,156 +10,151 @@ class PantallaPlanes extends StatefulWidget {
 }
 
 class _PantallaPlanesState extends State<PantallaPlanes> {
-  List<Map<String, dynamic>> _planes = [];
-  bool _cargando = true;
-
-  // Colores del Tema
-  final Color _colorFondo = Colors.black;
-  final Color _colorCard = const Color(0xFF1E1E1E); // Gris muy oscuro
-  final Color _colorDorado = const Color(0xFFD4AF37);
-  final Color _colorTexto = Colors.white;
-
-  @override
-  void initState() {
-    super.initState();
-    _cargarPlanes();
-  }
-
-  Future<void> _cargarPlanes() async {
-    try {
-      final response = await Supabase.instance.client
-          .from('planes')
-          .select()
-          .order('precio_total', ascending: true);
-
-      setState(() {
-        _planes = List<Map<String, dynamic>>.from(response);
-        _cargando = false;
-      });
-    } catch (e) {
-      debugPrint("Error cargando planes: $e");
-      setState(() => _cargando = false);
-    }
-  }
+  final Future<List<Map<String, dynamic>>> _planesFuture = Supabase
+      .instance
+      .client
+      .from('planes')
+      .select()
+      .order('precio_total', ascending: true);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _colorFondo,
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text(
-          "CATÁLOGO DE PLANES",
-          style: TextStyle(letterSpacing: 1.5),
-        ),
+        title: const Text("CATÁLOGO DE PLANES"),
         backgroundColor: Colors.black,
-        foregroundColor: _colorDorado,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(color: Colors.white12, height: 1.0),
-        ),
+        foregroundColor: const Color(0xFFD4AF37),
       ),
-      body: _cargando
-          ? Center(child: CircularProgressIndicator(color: _colorDorado))
-          : ListView.builder(
-              padding: const EdgeInsets.all(20),
-              itemCount: _planes.length,
-              itemBuilder: (context, index) {
-                final plan = _planes[index];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: _colorCard,
-                    borderRadius: BorderRadius.circular(15),
-                    border: Border.all(color: _colorDorado.withOpacity(0.3)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.5),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Encabezado: Nombre y Precio
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _planesFuture,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFFD4AF37)),
+            );
+          }
+          final planes = snapshot.data!;
+
+          if (planes.isEmpty) {
+            return const Center(
+              child: Text(
+                "No hay planes registrados.",
+                style: TextStyle(color: Colors.white),
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(15),
+            itemCount: planes.length,
+            itemBuilder: (context, index) {
+              final plan = planes[index];
+              return Card(
+                color: const Color(0xFF1E1E1E),
+                elevation: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                shape: RoundedRectangleBorder(
+                  side: const BorderSide(color: Color(0xFFD4AF37), width: 1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    // --- INFORMACIÓN DEL PLAN ---
+                    Padding(
+                      padding: const EdgeInsets.all(15.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
                                 plan['nombre'] ?? "Plan",
-                                style: TextStyle(
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              Text(
+                                "\$${plan['precio_total']}",
+                                style: const TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
-                                  color: _colorTexto,
+                                  color: Color(0xFFD4AF37),
                                 ),
                               ),
-                            ),
-                            Text(
-                              "\$${plan['precio_total']}",
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: _colorDorado,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Divider(color: Colors.white24, height: 25),
-
-                        // Descripción
-                        Text(
-                          plan['descripcion'] ?? "Sin descripción disponible.",
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                            height: 1.5,
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Botón de Acción
-                        SizedBox(
-                          width: double.infinity,
-                          height: 45,
-                          child: ElevatedButton.icon(
-                            icon: const Icon(
-                              Icons.shopping_cart_checkout,
-                              size: 18,
+                          const SizedBox(height: 10),
+                          const Divider(color: Colors.white24),
+                          const SizedBox(height: 10),
+                          Text(
+                            plan['descripcion'] ?? "Sin descripción",
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                              height: 1.5,
                             ),
-                            label: const Text(
-                              "VENDER ESTE PLAN",
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _colorDorado,
-                              foregroundColor: Colors.black,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            onPressed: () {
-                              // Navegamos pasando el plan seleccionado
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => PantallaNuevoContrato(
-                                    planPreseleccionado: plan, // <--- OJO AQUÍ
-                                  ),
-                                ),
-                              );
-                            },
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
+
+                    // --- BOTÓN DE ACCIÓN ---
+                    Container(
+                      width: double.infinity,
+                      decoration: const BoxDecoration(
+                        border: Border(top: BorderSide(color: Colors.white12)),
+                      ),
+                      child: InkWell(
+                        // EFECTO VISUAL AL TOCAR
+                        borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(12),
+                          bottomRight: Radius.circular(12),
+                        ),
+                        onTap: () {
+                          // AQUÍ ESTÁ LA MAGIA: Navegamos pasando el plan
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => PantallaNuevoContrato(
+                                planPreseleccionado: plan,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              Icon(
+                                Icons.add_circle_outline,
+                                color: Color(0xFFD4AF37),
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                "VENDER ESTE PLAN",
+                                style: TextStyle(
+                                  color: Color(0xFFD4AF37),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }

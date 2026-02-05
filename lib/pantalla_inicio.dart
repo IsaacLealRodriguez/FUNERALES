@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-// IMPORTS DE TUS PANTALLAS
-import 'pantalla_clientes.dart';
-import 'pantalla_planes.dart';
-import 'pantalla_login.dart';
-import 'pantalla_reportes.dart';
-import 'pantalla_historial.dart'; // <--- Conecta con la pantalla que acabamos de arreglar
+import 'pantalla_nuevo_contrato.dart';
+import 'pantalla_detalle_contrato.dart';
+import 'menu_lateral.dart';
 
 class PantallaInicio extends StatefulWidget {
   const PantallaInicio({super.key});
@@ -15,287 +12,356 @@ class PantallaInicio extends StatefulWidget {
 }
 
 class _PantallaInicioState extends State<PantallaInicio> {
-  // COLORES TEMA BLACK & GOLD
-  final Color _colorFondo = Colors.black;
-  final Color _colorDorado = const Color(0xFFD4AF37);
-  final Color _colorCard = const Color(0xFF1E1E1E);
+  // Variables para las métricas
+  double _cobradoHoy = 0.0;
+  double _porCobrarTotal = 0.0;
+  bool _cargandoMetricas = true;
 
-  // Variable para ventas (placeholder)
-  double _ventasMes = 0.00;
+  // Stream de contratos activos
+  final _contratosStream = Supabase.instance.client
+      .from('contratos')
+      .stream(primaryKey: ['id'])
+      .eq('estado', 'Activo')
+      .order('fecha_inicio', ascending: false);
 
-  Future<void> _cerrarSesion(BuildContext context) async {
-    await Supabase.instance.client.auth.signOut();
-    if (context.mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const PantallaLogin()),
-      );
+  @override
+  void initState() {
+    super.initState();
+    _calcularMetricas();
+  }
+
+  // --- FUNCIÓN PARA CALCULAR DINERO ---
+  Future<void> _calcularMetricas() async {
+    final supabase = Supabase.instance.client;
+    final hoy = DateTime.now();
+    final inicioDia = DateTime(hoy.year, hoy.month, hoy.day).toIso8601String();
+
+    try {
+      // 1. Calcular lo cobrado HOY (Tabla pagos)
+      final pagosHoy = await supabase
+          .from('pagos')
+          .select('monto')
+          .gte('fecha_pago', inicioDia); // Pagos desde las 00:00 de hoy
+
+      double sumaHoy = 0.0;
+      for (var p in pagosHoy) {
+        sumaHoy += (p['monto'] as num).toDouble();
+      }
+
+      // 2. Calcular deuda total (Tabla contratos activos)
+      final contratosActivos = await supabase
+          .from('contratos')
+          .select('saldo_pendiente')
+          .eq('estado', 'Activo');
+
+      double sumaDeuda = 0.0;
+      for (var c in contratosActivos) {
+        sumaDeuda += (c['saldo_pendiente'] as num).toDouble();
+      }
+
+      if (mounted) {
+        setState(() {
+          _cobradoHoy = sumaHoy;
+          _porCobrarTotal = sumaDeuda;
+          _cargandoMetricas = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error métricas: $e");
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final email = Supabase.instance.client.auth.currentUser?.email ?? "Admin";
+    const colorDorado = Color(0xFFD4AF37);
 
     return Scaffold(
-      backgroundColor: _colorFondo,
+      backgroundColor: Colors.black,
       appBar: AppBar(
+        title: const Text("PANEL DE CONTROL"),
         backgroundColor: Colors.black,
-        foregroundColor: _colorDorado,
-        elevation: 0,
-        centerTitle: true,
-        title: const Text(
-          "PANEL DE CONTROL",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-            letterSpacing: 1.5,
-          ),
-        ),
+        foregroundColor: colorDorado,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => _cerrarSesion(context),
-            tooltip: "Cerrar Sesión",
+            icon: const Icon(Icons.refresh),
+            onPressed: _calcularMetricas, // Botón para recalcular caja
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(color: Colors.white12, height: 1.0),
-        ),
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // 1. SECCIÓN DE CABECERA Y LOGO
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.only(bottom: 30, top: 10),
-              decoration: BoxDecoration(
-                color:
-                    _colorCard, // Gris oscuro en lugar de negro total para diferenciar
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: _colorDorado.withOpacity(0.1),
-                    blurRadius: 15,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
+      drawer: const MenuLateral(),
+
+      body: Column(
+        children: [
+          // --- TARJETA DE RESUMEN FINANCIERO ---
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.all(15),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [const Color(0xFF1E1E1E), Colors.black],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              child: Column(
-                children: [
-                  // --- LOGO / ICONO ---
-                  Container(
-                    height: 80,
-                    width: 80,
-                    margin: const EdgeInsets.only(bottom: 15),
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: _colorDorado, width: 2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _colorDorado.withOpacity(0.3),
-                          blurRadius: 10,
-                        ),
-                      ],
-                    ),
-                    child: Icon(Icons.business, color: _colorDorado, size: 40),
-                    // Si tienes una imagen real usa:
-                    // image: const DecorationImage(image: AssetImage('assets/logo.png')),
-                  ),
-
-                  Text(
-                    "Bienvenido",
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    email,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Tarjeta de Resumen (Ventas)
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 40),
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 12,
-                      horizontal: 20,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: _colorDorado.withOpacity(0.5)),
-                      borderRadius: BorderRadius.circular(10),
-                      color: Colors.black,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: colorDorado.withOpacity(0.5)),
+              boxShadow: [
+                BoxShadow(
+                  color: colorDorado.withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // CAJA DEL DÍA
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          "Ventas del Mes: ",
-                          style: TextStyle(color: _colorDorado),
-                        ),
-                        Text(
-                          "\$ ${_ventasMes.toStringAsFixed(2)}",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
+                        const Text(
+                          "COBRADO HOY",
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            letterSpacing: 1,
                           ),
                         ),
+                        const SizedBox(height: 5),
+                        _cargandoMetricas
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: colorDorado,
+                                ),
+                              )
+                            : Text(
+                                "\$${_cobradoHoy.toStringAsFixed(0)}",
+                                style: const TextStyle(
+                                  color: Colors.greenAccent,
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                       ],
                     ),
-                  ),
-                ],
-              ),
+                    // DEUDA TOTAL
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const Text(
+                          "POR COBRAR (TOTAL)",
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        _cargandoMetricas
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: colorDorado,
+                                ),
+                              )
+                            : Text(
+                                "\$${_porCobrarTotal.toStringAsFixed(0)}",
+                                style: const TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
             ),
+          ),
 
-            const SizedBox(height: 30),
-
-            // 2. GRID DE BOTONES
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount:
-                    2, // Cambié a 2 columnas para que los botones sean más grandes y legibles
-                crossAxisSpacing: 15,
-                mainAxisSpacing: 15,
-                childAspectRatio: 1.3,
-                children: [
-                  // BOTÓN PLANES (VENTA) - Destacado
-                  _BotonMenu(
-                    icono: Icons.inventory_2,
-                    texto: "NUEVA VENTA\n(CATÁLOGO)",
-                    colorIcono: _colorDorado,
-                    esDestacado: true,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const PantallaPlanes()),
-                    ),
+          // --- TÍTULO SECCIÓN ---
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: const [
+                Text(
+                  "CONTRATOS ACTIVOS",
+                  style: TextStyle(
+                    color: colorDorado,
+                    fontWeight: FontWeight.bold,
                   ),
-
-                  // BOTÓN HISTORIAL (CONTRATOS)
-                  _BotonMenu(
-                    icono: Icons.history_edu,
-                    texto: "HISTORIAL &\nPAGOS",
-                    colorIcono: Colors.white,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const PantallaHistorial(),
-                      ),
-                    ),
-                  ),
-
-                  // BOTÓN CLIENTES
-                  _BotonMenu(
-                    icono: Icons.people,
-                    texto: "CLIENTES",
-                    colorIcono: Colors.white,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const PantallaClientes(),
-                      ),
-                    ),
-                  ),
-
-                  // BOTÓN REPORTES
-                  _BotonMenu(
-                    icono: Icons.pie_chart,
-                    texto: "REPORTES",
-                    colorIcono: Colors.white,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const PantallaReportes(),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                Icon(Icons.arrow_downward, color: Colors.white24, size: 16),
+              ],
             ),
-          ],
+          ),
+
+          // --- LISTA DE DEUDORES ---
+          Expanded(
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _contratosStream,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData)
+                  return const Center(
+                    child: CircularProgressIndicator(color: colorDorado),
+                  );
+
+                final contratos = snapshot.data!;
+                if (contratos.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      "No hay contratos activos.",
+                      style: TextStyle(color: Colors.white38),
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 15),
+                  itemCount: contratos.length,
+                  itemBuilder: (context, index) {
+                    final contrato = contratos[index];
+
+                    // Supabase a veces trae las relaciones anidadas si configuramos la foreign key,
+                    // pero en el stream simple a veces solo trae el ID.
+                    // Para simplificar el Dashboard, haremos una consulta inteligente.
+                    // NOTA: Si ves "Instance of..." aquí, avísame y ajustamos la consulta.
+
+                    return _TarjetaContratoSimple(contrato: contrato);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const PantallaNuevoContrato(),
+            ),
+          );
+        },
+        backgroundColor: colorDorado,
+        icon: const Icon(Icons.add, color: Colors.black),
+        label: const Text(
+          "NUEVO CONTRATO",
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
       ),
     );
   }
 }
 
-// Diseño del Botón (Estilo Black & Gold)
-class _BotonMenu extends StatelessWidget {
-  final IconData icono;
-  final String texto;
-  final Color colorIcono;
-  final VoidCallback onTap;
-  final bool esDestacado;
+// Widget separado para manejar la carga de datos del cliente individualmente
+// Esto evita que el stream principal se complique
+class _TarjetaContratoSimple extends StatefulWidget {
+  final Map<String, dynamic> contrato;
+  const _TarjetaContratoSimple({required this.contrato});
 
-  const _BotonMenu({
-    required this.icono,
-    required this.texto,
-    required this.onTap,
-    this.colorIcono = Colors.white,
-    this.esDestacado = false,
-  });
+  @override
+  State<_TarjetaContratoSimple> createState() => _TarjetaContratoSimpleState();
+}
+
+class _TarjetaContratoSimpleState extends State<_TarjetaContratoSimple> {
+  Map<String, dynamic>? _cliente;
+  Map<String, dynamic>? _plan;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarDatosRelacionados();
+  }
+
+  Future<void> _cargarDatosRelacionados() async {
+    final supabase = Supabase.instance.client;
+    // Cargar Cliente
+    final clienteRes = await supabase
+        .from('clientes')
+        .select()
+        .eq('id', widget.contrato['cliente_id'])
+        .single();
+    // Cargar Plan
+    final planRes = await supabase
+        .from('planes')
+        .select()
+        .eq('id', widget.contrato['plan_id'])
+        .single();
+
+    if (mounted) {
+      setState(() {
+        _cliente = clienteRes;
+        _plan = planRes;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final colorCard = const Color(0xFF1E1E1E);
-    final colorDorado = const Color(0xFFD4AF37);
+    if (_cliente == null) return const SizedBox(); // Cargando silencioso
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(15),
-      child: Container(
-        decoration: BoxDecoration(
-          color: esDestacado ? colorDorado.withOpacity(0.15) : colorCard,
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(
-            color: esDestacado ? colorDorado : Colors.white10,
-            width: esDestacado ? 2 : 1,
+    final saldo = (widget.contrato['saldo_pendiente'] as num).toDouble();
+
+    // Unificar mapa completo para pasar al detalle
+    final contratoCompleto = {
+      ...widget.contrato,
+      'clientes': _cliente,
+      'planes': _plan,
+    };
+
+    return Card(
+      color: const Color(0xFF1E1E1E),
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+        leading: CircleAvatar(
+          backgroundColor: Colors.black,
+          child: Text(
+            (_cliente!['nombre_difunto'] ?? "C")[0],
+            style: const TextStyle(color: Color(0xFFD4AF37)),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.5),
-              blurRadius: 5,
-              offset: const Offset(0, 3),
-            ),
-          ],
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icono,
-              size: 32,
-              color: esDestacado ? colorDorado : colorIcono,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              texto,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1,
-                color: esDestacado ? colorDorado : Colors.white70,
+        title: Text(
+          _cliente!['nombre_difunto'],
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(
+          "Debe: \$${saldo.toStringAsFixed(2)}",
+          style: const TextStyle(color: Colors.redAccent),
+        ),
+        trailing: const Icon(
+          Icons.arrow_forward_ios,
+          size: 14,
+          color: Colors.white24,
+        ),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PantallaDetalleContrato(
+                contrato: contratoCompleto,
+                cliente: {},
               ),
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

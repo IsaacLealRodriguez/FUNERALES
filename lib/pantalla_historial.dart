@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
 
-// ---------------------------------------------------------
-// PANTALLA 1: LISTA HISTÓRICA GENERAL
-// ---------------------------------------------------------
 class PantallaHistorial extends StatefulWidget {
   const PantallaHistorial({super.key});
 
@@ -12,224 +10,10 @@ class PantallaHistorial extends StatefulWidget {
 }
 
 class _PantallaHistorialState extends State<PantallaHistorial> {
-  List<Map<String, dynamic>> _todosLosContratos = [];
-  List<Map<String, dynamic>> _contratosFiltrados = [];
-  bool _cargando = true;
-  final TextEditingController _searchController = TextEditingController();
-
-  // COLORES TEMA BLACK & GOLD
-  final Color _colorFondo = Colors.black;
-  final Color _colorDorado = const Color(0xFFD4AF37);
-  final Color _colorCard = const Color(0xFF1E1E1E);
-  final Color _colorTexto = Colors.white;
-
-  @override
-  void initState() {
-    super.initState();
-    _cargarContratos();
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose(); // Buena práctica: limpiar controlador
-    super.dispose();
-  }
-
-  Future<void> _cargarContratos() async {
-    try {
-      // Obtenemos contratos con datos del cliente y plan
-      final response = await Supabase.instance.client
-          .from('contratos')
-          .select('*, clientes(nombre_difunto), planes(nombre)')
-          .order('created_at', ascending: false);
-
-      final data = List<Map<String, dynamic>>.from(response);
-
-      if (mounted) {
-        setState(() {
-          _todosLosContratos = data;
-          _contratosFiltrados = data;
-          _cargando = false;
-        });
-      }
-    } catch (e) {
-      debugPrint("Error cargando historial: $e");
-      if (mounted) setState(() => _cargando = false);
-    }
-  }
-
-  void _filtrarResultados(String query) {
-    setState(() {
-      if (query.isEmpty) {
-        _contratosFiltrados = _todosLosContratos;
-      } else {
-        _contratosFiltrados = _todosLosContratos.where((contrato) {
-          // Navegación segura para obtener el nombre
-          final nombre = contrato['clientes'] != null
-              ? (contrato['clientes']['nombre_difunto'] ?? "")
-                    .toString()
-                    .toLowerCase()
-              : "";
-          return nombre.contains(query.toLowerCase());
-        }).toList();
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _colorFondo,
-      appBar: AppBar(
-        title: const Text(
-          "HISTORIAL GENERAL",
-          style: TextStyle(letterSpacing: 1, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.black,
-        foregroundColor: _colorDorado,
-        centerTitle: true,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(color: Colors.white12, height: 1.0),
-        ),
-      ),
-      body: Column(
-        children: [
-          // BUSCADOR
-          Container(
-            padding: const EdgeInsets.all(15),
-            color: Colors.black,
-            child: TextField(
-              controller: _searchController,
-              onChanged: _filtrarResultados,
-              style: TextStyle(color: _colorTexto),
-              cursorColor: _colorDorado,
-              decoration: InputDecoration(
-                hintText: "Buscar por nombre de difunto...",
-                hintStyle: const TextStyle(color: Colors.white38),
-                prefixIcon: Icon(Icons.search, color: _colorDorado),
-                filled: true,
-                fillColor: _colorCard,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-              ),
-            ),
-          ),
-
-          // LISTA DE CONTRATOS
-          Expanded(
-            child: _cargando
-                ? Center(child: CircularProgressIndicator(color: _colorDorado))
-                : _contratosFiltrados.isEmpty
-                ? const Center(
-                    child: Text(
-                      "Sin registros encontrados",
-                      style: TextStyle(color: Colors.white54),
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 15),
-                    itemCount: _contratosFiltrados.length,
-                    itemBuilder: (context, index) {
-                      final contrato = _contratosFiltrados[index];
-
-                      // Extracción segura de datos
-                      final cliente = contrato['clientes'] != null
-                          ? contrato['clientes']['nombre_difunto']
-                          : 'Desconocido';
-                      final plan = contrato['planes'] != null
-                          ? contrato['planes']['nombre']
-                          : 'Plan';
-                      final estado = contrato['estado'] ?? 'Activo';
-
-                      return GestureDetector(
-                        onTap: () {
-                          // Navegar al detalle
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  PantallaDetalleContrato(contrato: contrato),
-                            ),
-                          );
-                        },
-                        child: Card(
-                          color: _colorCard,
-                          margin: const EdgeInsets.only(bottom: 10),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            side: const BorderSide(color: Colors.white10),
-                          ),
-                          child: ListTile(
-                            leading: Icon(
-                              Icons.description,
-                              color: estado == 'Liquidado'
-                                  ? Colors.green
-                                  : _colorDorado,
-                            ),
-                            title: Text(
-                              cliente,
-                              style: TextStyle(
-                                color: _colorTexto,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            subtitle: Text(
-                              plan,
-                              style: const TextStyle(color: Colors.white54),
-                            ),
-                            trailing: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: estado == 'Liquidado'
-                                    ? _colorDorado
-                                    : Colors.grey[800],
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                estado.toUpperCase(),
-                                style: TextStyle(
-                                  color: estado == 'Liquidado'
-                                      ? Colors.black
-                                      : Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------
-// PANTALLA 2: DETALLE DE PAGOS Y CONTRATO
-// ---------------------------------------------------------
-class PantallaDetalleContrato extends StatefulWidget {
-  final Map<String, dynamic> contrato;
-  const PantallaDetalleContrato({super.key, required this.contrato});
-
-  @override
-  State<PantallaDetalleContrato> createState() =>
-      _PantallaDetalleContratoState();
-}
-
-class _PantallaDetalleContratoState extends State<PantallaDetalleContrato> {
-  List<Map<String, dynamic>> _pagos = [];
-  bool _cargando = true;
+  DateTime _fechaSeleccionada = DateTime.now();
+  List<Map<String, dynamic>> _pagosDelDia = [];
+  double _totalCobrado = 0.0;
+  bool _cargando = false;
 
   // COLORES
   final Color _colorFondo = Colors.black;
@@ -239,216 +23,220 @@ class _PantallaDetalleContratoState extends State<PantallaDetalleContrato> {
   @override
   void initState() {
     super.initState();
-    _cargarHistorialPagos();
+    _cargarPagosPorFecha(_fechaSeleccionada);
   }
 
-  Future<void> _cargarHistorialPagos() async {
-    try {
-      final contratoId = widget.contrato['id'];
+  // Lógica para cambiar fecha
+  Future<void> _seleccionarFecha() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _fechaSeleccionada,
+      firstDate: DateTime(2023),
+      lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.dark(
+              primary: _colorDorado,
+              onPrimary: Colors.black,
+              surface: _colorCard,
+              onSurface: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _fechaSeleccionada) {
+      setState(() {
+        _fechaSeleccionada = picked;
+      });
+      _cargarPagosPorFecha(picked);
+    }
+  }
 
+  Future<void> _cargarPagosPorFecha(DateTime fecha) async {
+    setState(() {
+      _cargando = true;
+      _totalCobrado = 0.0;
+    });
+
+    try {
+      // Definir rango del día (00:00 a 23:59)
+      final inicioDia = DateTime(
+        fecha.year,
+        fecha.month,
+        fecha.day,
+      ).toIso8601String();
+      final finDia = DateTime(
+        fecha.year,
+        fecha.month,
+        fecha.day,
+        23,
+        59,
+        59,
+      ).toIso8601String();
+
+      // CONSULTA CON TRIPLE JOIN: Pagos -> Contratos -> Clientes
+      // Nota: Supabase usa la notación: tabla(columna) para joins anidados
       final response = await Supabase.instance.client
           .from('pagos')
-          .select()
-          .eq('contrato_id', contratoId)
+          .select(
+            'id, monto, fecha_pago, contratos!inner(id, clientes!inner(nombre_difunto))',
+          )
+          .gte('fecha_pago', inicioDia)
+          .lte('fecha_pago', finDia)
           .order('fecha_pago', ascending: false);
+
+      // Calcular total
+      double suma = 0;
+      final data = List<Map<String, dynamic>>.from(response);
+
+      for (var p in data) {
+        suma += (p['monto'] ?? 0);
+      }
 
       if (mounted) {
         setState(() {
-          _pagos = List<Map<String, dynamic>>.from(response);
+          _pagosDelDia = data;
+          _totalCobrado = suma;
           _cargando = false;
         });
       }
     } catch (e) {
+      debugPrint("Error al cargar historial: $e");
       if (mounted) setState(() => _cargando = false);
-      debugPrint("Error cargando pagos: $e");
     }
   }
 
-  // Función manual para no depender del paquete 'intl' y evitar errores
-  String _formatearFecha(String? fechaIso) {
-    if (fechaIso == null) return "-";
+  String _formatearHora(String fechaIso) {
     try {
-      final fecha = DateTime.parse(fechaIso);
-      // Formato simple DD/MM/AAAA HH:MM
-      return "${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year} ${fecha.hour}:${fecha.minute.toString().padLeft(2, '0')}";
-    } catch (e) {
-      return fechaIso;
+      final fecha = DateTime.parse(
+        fechaIso,
+      ).toLocal(); // Convertir a hora local
+      return DateFormat('hh:mm a').format(fecha);
+    } catch (_) {
+      return "--:--";
     }
+  }
+
+  String _formatearFechaTitulo() {
+    return DateFormat('dd/MM/yyyy').format(_fechaSeleccionada);
   }
 
   @override
   Widget build(BuildContext context) {
-    // Extracción de datos
-    final clienteMap = widget.contrato['clientes'] ?? {};
-    final planMap = widget.contrato['planes'] ?? {};
-
-    final nombreCliente = clienteMap['nombre_difunto'] ?? "Cliente Desconocido";
-    final nombrePlan = planMap['nombre'] ?? "Plan";
-
-    // Cálculos numéricos seguros
-    final saldoPendiente =
-        (widget.contrato['saldo_pendiente'] as num?)?.toDouble() ?? 0.0;
-    final precioTotal = (planMap['precio_total'] as num?)?.toDouble() ?? 0.0;
-
-    // Si el precio total es 0 (error de datos), asumimos que lo pagado es 0
-    final pagadoTotal = (precioTotal > 0)
-        ? (precioTotal - saldoPendiente)
-        : 0.0;
-
     return Scaffold(
       backgroundColor: _colorFondo,
       appBar: AppBar(
-        title: const Text("ESTADO DE CUENTA"),
-        centerTitle: true,
+        title: const Text("CORTE DE CAJA"),
         backgroundColor: Colors.black,
         foregroundColor: _colorDorado,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(color: Colors.white12, height: 1.0),
-        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_month),
+            onPressed: _seleccionarFecha,
+          ),
+        ],
       ),
       body: Column(
         children: [
-          // 1. TARJETA DE RESUMEN (HEADER)
+          // TARJETA DE RESUMEN
           Container(
             width: double.infinity,
             margin: const EdgeInsets.all(15),
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: _colorCard,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(15),
               border: Border.all(color: _colorDorado.withOpacity(0.3)),
-              boxShadow: [
-                BoxShadow(
-                  color: _colorDorado.withOpacity(0.05),
-                  blurRadius: 10,
-                ),
-              ],
             ),
             child: Column(
               children: [
                 Text(
-                  nombreCliente,
+                  "INGRESOS DEL ${_formatearFechaTitulo()}",
                   style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: Colors.white54,
+                    letterSpacing: 1,
                   ),
-                  textAlign: TextAlign.center,
                 ),
+                const SizedBox(height: 10),
+                _cargando
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(
+                        "\$${_totalCobrado.toStringAsFixed(2)}",
+                        style: TextStyle(
+                          color: _colorDorado,
+                          fontSize: 40,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                 const SizedBox(height: 5),
                 Text(
-                  nombrePlan.toUpperCase(),
-                  style: TextStyle(color: Colors.grey[400], letterSpacing: 1),
-                ),
-                const Divider(color: Colors.white12, height: 30),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _InfoCaja(
-                      "Total Plan",
-                      "\$${precioTotal.toStringAsFixed(2)}",
-                      Colors.white,
-                    ),
-                    _InfoCaja(
-                      "Pagado",
-                      "\$${pagadoTotal.toStringAsFixed(2)}",
-                      Colors.green,
-                    ),
-                    _InfoCaja(
-                      "Debe",
-                      "\$${saldoPendiente.toStringAsFixed(2)}",
-                      Colors.redAccent,
-                    ),
-                  ],
+                  "${_pagosDelDia.length} Transacciones",
+                  style: const TextStyle(color: Colors.white30, fontSize: 12),
                 ),
               ],
             ),
           ),
 
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                "MOVIMIENTOS REGISTRADOS",
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 12,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ),
-          ),
+          const Divider(color: Colors.white10),
 
-          // 2. LISTA DE MOVIMIENTOS
+          // LISTA DE TRANSACCIONES
           Expanded(
             child: _cargando
                 ? Center(child: CircularProgressIndicator(color: _colorDorado))
-                : _pagos.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.receipt_long,
-                          size: 50,
-                          color: Colors.grey[800],
-                        ),
-                        const SizedBox(height: 10),
-                        const Text(
-                          "No hay pagos registrados aún.",
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ],
+                : _pagosDelDia.isEmpty
+                ? const Center(
+                    child: Text(
+                      "No hay movimientos en esta fecha.",
+                      style: TextStyle(color: Colors.white30),
                     ),
                   )
                 : ListView.builder(
-                    itemCount: _pagos.length,
+                    itemCount: _pagosDelDia.length,
                     itemBuilder: (context, index) {
-                      final pago = _pagos[index];
-                      final monto = (pago['monto'] as num?) ?? 0;
-                      final fecha = _formatearFecha(
-                        pago['fecha_pago'] ?? pago['created_at'],
-                      );
-                      final metodo = pago['metodo_pago'] ?? 'Efectivo';
+                      final pago = _pagosDelDia[index];
+                      // Navegamos seguros a través del JSON anidado
+                      final contrato =
+                          pago['contratos'] as Map<String, dynamic>? ?? {};
+                      final cliente =
+                          contrato['clientes'] as Map<String, dynamic>? ?? {};
+                      final nombreCliente =
+                          cliente['nombre_difunto'] ?? "Cliente Desconocido";
 
-                      return Container(
-                        decoration: const BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(color: Colors.white10),
+                      return ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.attach_money,
+                            color: Colors.green,
                           ),
                         ),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: _colorDorado.withOpacity(0.2),
-                            child: Icon(
-                              Icons.check,
-                              color: _colorDorado,
-                              size: 20,
-                            ),
+                        title: Text(
+                          nombreCliente,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
                           ),
-                          title: const Text(
-                            "Abono a cuenta",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          subtitle: Text(
-                            "$fecha • $metodo",
-                            style: TextStyle(
-                              color: Colors.grey[400],
-                              fontSize: 12,
-                            ),
-                          ),
-                          trailing: Text(
-                            "+\$${monto.toStringAsFixed(2)}",
-                            style: const TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
+                        ),
+                        subtitle: Text(
+                          "Hora: ${_formatearHora(pago['fecha_pago'])}",
+                          style: const TextStyle(color: Colors.white38),
+                        ),
+                        trailing: Text(
+                          "+\$${pago['monto']}",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
                           ),
                         ),
                       );
@@ -457,23 +245,6 @@ class _PantallaDetalleContratoState extends State<PantallaDetalleContrato> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _InfoCaja(String titulo, String valor, Color colorValor) {
-    return Column(
-      children: [
-        Text(titulo, style: const TextStyle(color: Colors.grey, fontSize: 10)),
-        const SizedBox(height: 4),
-        Text(
-          valor,
-          style: TextStyle(
-            color: colorValor,
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
-          ),
-        ),
-      ],
     );
   }
 }
