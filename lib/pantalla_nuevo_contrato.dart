@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:intl/intl.dart'; // Para formatear la fecha bonito
+import 'package:intl/intl.dart';
+// Importa el paquete de mapas y tu pantalla de selector
+import 'package:open_street_map_search_and_pick/open_street_map_search_and_pick.dart';
+import 'selector_mapa.dart';
 
 class PantallaNuevoContrato extends StatefulWidget {
   final Map<String, dynamic>? planPreseleccionado;
-
   const PantallaNuevoContrato({super.key, this.planPreseleccionado});
 
   @override
@@ -12,7 +14,7 @@ class PantallaNuevoContrato extends StatefulWidget {
 }
 
 class _PantallaNuevoContratoState extends State<PantallaNuevoContrato> {
-  // --- CONTROLADORES ---
+  // --- 1. CONTROLADORES ---
   final _nombreDifuntoController = TextEditingController();
   final _nombreContactoController = TextEditingController();
   final _telefonoController = TextEditingController();
@@ -20,17 +22,18 @@ class _PantallaNuevoContratoState extends State<PantallaNuevoContrato> {
   final _engancheController = TextEditingController(text: "0");
   final _montoParcialController = TextEditingController(text: "0");
 
-  // --- VARIABLES DE ESTADO ---
+  // --- 2. VARIABLES DE ESTADO ---
   bool _cargando = false;
   bool _esNuevoCliente = true;
-
-  // Listas y Selecciones
   List<Map<String, dynamic>> _listaClientesExistentes = [];
   Map<String, dynamic>? _clienteExistenteSeleccionado;
   List<Map<String, dynamic>> _listaPlanes = [];
   Map<String, dynamic>? _planSeleccionado;
 
-  // --- LÓGICA DE FECHAS Y COBRANZA ---
+  // Variables para Coordenadas GPS
+  double? _latitud;
+  double? _longitud;
+
   String _frecuenciaPago = 'Semanal';
   final List<String> _frecuencias = ['Semanal', 'Quincenal', 'Mensual'];
   DateTime _fechaProximoPago = DateTime.now();
@@ -40,14 +43,43 @@ class _PantallaNuevoContratoState extends State<PantallaNuevoContrato> {
     super.initState();
     _cargarPlanes();
     _cargarClientesExistentes();
-    _calcularFechaPago(); // Calcula la fecha inicial al abrir
+    _calcularFechaPago();
   }
 
-  // 1. FUNCIÓN INTELIGENTE DE FECHAS
+  @override
+  void dispose() {
+    _nombreDifuntoController.dispose();
+    _nombreContactoController.dispose();
+    _telefonoController.dispose();
+    _direccionController.dispose();
+    _engancheController.dispose();
+    _montoParcialController.dispose();
+    super.dispose();
+  }
+
+  // --- 3. LÓGICA DE MAPAS ---
+  // --- 3. LÓGICA DE MAPAS ---
+  Future<void> _abrirSelectorMapa() async {
+    final resultado = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const SelectorMapa()),
+    );
+
+    if (resultado != null) {
+      setState(() {
+        // 🌟 LA SOLUCIÓN: Usar addressName que sí es un String
+        _direccionController.text = resultado.addressName;
+
+        _latitud = resultado.latLong.latitude;
+        _longitud = resultado.latLong.longitude;
+      });
+    }
+  }
+  // --- 4. LÓGICA DE NEGOCIO ---
+
   void _calcularFechaPago() {
     final hoy = DateTime.now();
     DateTime nuevaFecha;
-
     switch (_frecuenciaPago) {
       case 'Semanal':
         nuevaFecha = hoy.add(const Duration(days: 7));
@@ -56,38 +88,27 @@ class _PantallaNuevoContratoState extends State<PantallaNuevoContrato> {
         nuevaFecha = hoy.add(const Duration(days: 15));
         break;
       case 'Mensual':
-        // Suma 1 mes exacto (maneja años bisiestos y cambios de año solo)
         nuevaFecha = DateTime(hoy.year, hoy.month + 1, hoy.day);
         break;
       default:
         nuevaFecha = hoy.add(const Duration(days: 7));
     }
-
-    setState(() {
-      _fechaProximoPago = nuevaFecha;
-    });
+    setState(() => _fechaProximoPago = nuevaFecha);
   }
 
-  // 2. CARGAR PLANES
   Future<void> _cargarPlanes() async {
     try {
       final response = await Supabase.instance.client
           .from('planes')
           .select()
           .order('precio_total', ascending: true);
-
       setState(() {
         _listaPlanes = List<Map<String, dynamic>>.from(response);
-
-        // Preseleccionar plan si viene de la pantalla anterior
         if (widget.planPreseleccionado != null) {
-          try {
-            _planSeleccionado = _listaPlanes.firstWhere(
-              (p) => p['id'] == widget.planPreseleccionado!['id'],
-            );
-          } catch (e) {
-            if (_listaPlanes.isNotEmpty) _planSeleccionado = _listaPlanes[0];
-          }
+          _planSeleccionado = _listaPlanes.firstWhere(
+            (p) => p['id'] == widget.planPreseleccionado!['id'],
+            orElse: () => _listaPlanes.isNotEmpty ? _listaPlanes[0] : {},
+          );
         } else if (_listaPlanes.isNotEmpty) {
           _planSeleccionado = _listaPlanes[0];
         }
@@ -97,38 +118,35 @@ class _PantallaNuevoContratoState extends State<PantallaNuevoContrato> {
     }
   }
 
-  // 3. CARGAR CLIENTES
   Future<void> _cargarClientesExistentes() async {
     try {
       final response = await Supabase.instance.client
           .from('clientes')
-          .select('id, nombre_contacto, nombre_difunto, telefono')
+          .select(
+            'id, nombre_contacto, nombre_difunto, telefono, direccion, latitud, longitud',
+          )
           .order('nombre_contacto', ascending: true);
-
-      setState(() {
-        _listaClientesExistentes = List<Map<String, dynamic>>.from(response);
-      });
+      setState(
+        () => _listaClientesExistentes = List<Map<String, dynamic>>.from(
+          response,
+        ),
+      );
     } catch (e) {
       debugPrint('Error cargando clientes: $e');
     }
   }
 
-  // 4. GUARDAR CONTRATO
   Future<void> _guardarContrato() async {
     if (_planSeleccionado == null) return;
-
-    // VALIDACIONES
     if (_esNuevoCliente) {
-      if (_nombreDifuntoController.text.isEmpty ||
-          _nombreContactoController.text.isEmpty) {
-        _mostrarError("Faltan nombres obligatorios");
+      if (_nombreContactoController.text.isEmpty ||
+          _direccionController.text.isEmpty) {
+        _mostrarError("Nombre y Dirección son obligatorios");
         return;
       }
-    } else {
-      if (_clienteExistenteSeleccionado == null) {
-        _mostrarError("Debes seleccionar un cliente existente");
-        return;
-      }
+    } else if (_clienteExistenteSeleccionado == null) {
+      _mostrarError("Selecciona un cliente de la lista");
+      return;
     }
 
     setState(() => _cargando = true);
@@ -138,7 +156,6 @@ class _PantallaNuevoContratoState extends State<PantallaNuevoContrato> {
       final userId = supabase.auth.currentUser?.id;
       int clienteId;
 
-      // A. OBTENER ID CLIENTE
       if (_esNuevoCliente) {
         final clienteData = await supabase
             .from('clientes')
@@ -147,6 +164,8 @@ class _PantallaNuevoContratoState extends State<PantallaNuevoContrato> {
               'nombre_contacto': _nombreContactoController.text.toUpperCase(),
               'telefono': _telefonoController.text,
               'direccion': _direccionController.text.toUpperCase(),
+              'latitud': _latitud,
+              'longitud': _longitud,
               'fecha_registro': DateTime.now().toIso8601String(),
             })
             .select()
@@ -156,25 +175,12 @@ class _PantallaNuevoContratoState extends State<PantallaNuevoContrato> {
         clienteId = _clienteExistenteSeleccionado!['id'];
       }
 
-      // B. CÁLCULOS FINANCIEROS
       final double precioPlan = (_planSeleccionado!['precio_total'] as num)
           .toDouble();
       final double enganche = double.tryParse(_engancheController.text) ?? 0.0;
-
-      // Seguridad: Enganche no puede ser mayor al precio
-      if (enganche > precioPlan) {
-        _mostrarError(
-          "El enganche (\$$enganche) supera el total (\$$precioPlan).",
-        );
-        setState(() => _cargando = false);
-        return;
-      }
-
       final double cuota = double.tryParse(_montoParcialController.text) ?? 0.0;
       final double saldoPendiente = precioPlan - enganche;
-      final String estado = saldoPendiente <= 0 ? 'Liquidado' : 'Activo';
 
-      // C. INSERTAR CONTRATO (CON LA FECHA DE COBRO CALCULADA)
       final contratoData = await supabase
           .from('contratos')
           .insert({
@@ -183,27 +189,20 @@ class _PantallaNuevoContratoState extends State<PantallaNuevoContrato> {
             'saldo_pendiente': saldoPendiente,
             'monto_parcial': cuota,
             'frecuencia_pago': _frecuenciaPago,
-            'estado': estado,
+            'estado': saldoPendiente <= 0 ? 'Liquidado' : 'Activo',
             'fecha_inicio': DateTime.now().toIso8601String(),
-            // --- AQUÍ ESTÁ LA CLAVE PARA SABER A QUIÉN COBRAR ---
             'proximo_pago': _fechaProximoPago.toIso8601String(),
           })
           .select()
           .single();
 
-      final contratoId = contratoData['id'];
-
-      // D. REGISTRAR PAGO DEL ENGANCHE
       if (enganche > 0 && userId != null) {
         await supabase.from('pagos').insert({
-          'contrato_id': contratoId,
+          'contrato_id': contratoData['id'],
           'monto': enganche,
           'fecha_pago': DateTime.now().toIso8601String(),
           'metodo_pago': 'Efectivo',
           'usuario_id': userId,
-
-          // CAMBIA 'concepto' POR EL NOMBRE QUE TENGAS EN TU BASE DE DATOS
-          // Si no tienes ninguna columna para notas, BORRA ESTA LÍNEA
           'concepto': 'ENGANCHE INICIAL',
         });
       }
@@ -211,269 +210,124 @@ class _PantallaNuevoContratoState extends State<PantallaNuevoContrato> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("¡Contrato creado! Cobro programado."),
+            content: Text("¡Contrato Guardado con Éxito!"),
             backgroundColor: Colors.green,
           ),
         );
         Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted) _mostrarError("Error: $e");
+      _mostrarError("Error al guardar: $e");
     } finally {
       if (mounted) setState(() => _cargando = false);
     }
   }
 
-  void _mostrarError(String mensaje) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(mensaje), backgroundColor: Colors.red),
-    );
+  void _mostrarError(String msj) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(msj), backgroundColor: Colors.red));
   }
 
   @override
   Widget build(BuildContext context) {
-    // Estilos
     const colorDorado = Color(0xFFD4AF37);
-    final inputBorder = OutlineInputBorder(
-      borderSide: const BorderSide(color: Colors.white30),
-      borderRadius: BorderRadius.circular(8),
-    );
-    final inputBorderFocus = OutlineInputBorder(
-      borderSide: const BorderSide(color: colorDorado),
-      borderRadius: BorderRadius.circular(8),
-    );
 
-    // Cálculos visuales
     double precio = _planSeleccionado != null
         ? (_planSeleccionado!['precio_total'] as num).toDouble()
         : 0.0;
     double enganche = double.tryParse(_engancheController.text) ?? 0.0;
     double saldo = precio - enganche;
 
-    // Formatear Fecha (Ej: 15/10/2023)
-    // Nota: Usamos formato numérico para evitar errores si el idioma español no está cargado
-    String fechaVisual = DateFormat('dd/MM/yyyy').format(_fechaProximoPago);
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text("NUEVO CONTRATO"),
+        title: const Text(
+          "NUEVO CONTRATO",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.black,
         foregroundColor: colorDorado,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- TIPO DE CLIENTE ---
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.white24),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _esNuevoCliente = true),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: _esNuevoCliente
-                              ? colorDorado
-                              : Colors.transparent,
-                          borderRadius: const BorderRadius.horizontal(
-                            left: Radius.circular(9),
-                          ),
-                        ),
-                        child: Text(
-                          "Nuevo Cliente",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: _esNuevoCliente
-                                ? Colors.black
-                                : Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _esNuevoCliente = false),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: !_esNuevoCliente
-                              ? colorDorado
-                              : Colors.transparent,
-                          borderRadius: const BorderRadius.horizontal(
-                            right: Radius.circular(9),
-                          ),
-                        ),
-                        child: Text(
-                          "Cliente Existente",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: !_esNuevoCliente
-                                ? Colors.black
-                                : Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _selectorTipoCliente(colorDorado),
+            const SizedBox(height: 25),
 
-            const SizedBox(height: 20),
-
-            // --- FORMULARIO CLIENTE ---
             if (_esNuevoCliente) ...[
               _inputCampo(
                 "Nombre del Difunto",
                 _nombreDifuntoController,
                 Icons.person,
-                inputBorder,
-                inputBorderFocus,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               _inputCampo(
-                "Nombre del Titular",
+                "Nombre del Titular (Cliente)",
                 _nombreContactoController,
                 Icons.account_box,
-                inputBorder,
-                inputBorderFocus,
               ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _inputCampo(
-                      "Teléfono",
-                      _telefonoController,
-                      Icons.phone,
-                      inputBorder,
-                      inputBorderFocus,
-                      numero: true,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _inputCampo(
-                      "Dirección",
-                      _direccionController,
-                      Icons.home,
-                      inputBorder,
-                      inputBorderFocus,
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 12),
+              _inputCampo(
+                "Teléfono Celular",
+                _telefonoController,
+                Icons.phone,
+                numero: true,
               ),
-            ] else ...[
-              Autocomplete<Map<String, dynamic>>(
-                optionsBuilder: (TextEditingValue val) {
-                  if (val.text.isEmpty)
-                    return const Iterable<Map<String, dynamic>>.empty();
-                  return _listaClientesExistentes.where(
-                    (c) => c['nombre_contacto']
-                        .toString()
-                        .toLowerCase()
-                        .contains(val.text.toLowerCase()),
-                  );
-                },
-                displayStringForOption: (c) => c['nombre_contacto'],
-                onSelected: (sel) =>
-                    setState(() => _clienteExistenteSeleccionado = sel),
-                fieldViewBuilder: (ctx, ctrl, focus, onEdit) => TextField(
-                  controller: ctrl,
-                  focusNode: focus,
-                  onEditingComplete: onEdit,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: "Buscar por Titular",
-                    labelStyle: const TextStyle(color: Colors.white60),
-                    prefixIcon: const Icon(Icons.search, color: colorDorado),
-                    enabledBorder: inputBorder,
-                    focusedBorder: inputBorderFocus,
-                    helperText: _clienteExistenteSeleccionado != null
-                        ? "Seleccionado: ${_clienteExistenteSeleccionado!['nombre_contacto']}"
-                        : "Escribe para buscar...",
-                    helperStyle: TextStyle(
-                      color: _clienteExistenteSeleccionado != null
-                          ? Colors.green
-                          : Colors.white54,
-                    ),
+              const SizedBox(height: 12),
+
+              TextField(
+                controller: _direccionController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: "Dirección de Cobro",
+                  labelStyle: const TextStyle(color: Colors.white60),
+                  prefixIcon: const Icon(Icons.home, color: Colors.white60),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.map, color: colorDorado),
+                    onPressed: _abrirSelectorMapa,
+                    tooltip: "Seleccionar en mapa",
+                  ),
+                  enabledBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: colorDorado),
                   ),
                 ),
-                optionsViewBuilder: (ctx, onSel, opts) => Align(
-                  alignment: Alignment.topLeft,
-                  child: Material(
-                    color: const Color(0xFF1E1E1E),
-                    elevation: 4,
-                    child: SizedBox(
-                      width: MediaQuery.of(ctx).size.width - 40,
-                      child: ListView.builder(
-                        padding: EdgeInsets.zero,
-                        shrinkWrap: true,
-                        itemCount: opts.length,
-                        itemBuilder: (ctx, i) {
-                          final o = opts.elementAt(i);
-                          return ListTile(
-                            title: Text(
-                              o['nombre_contacto'],
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                            subtitle: Text(
-                              "Difunto: ${o['nombre_difunto'] ?? 'N/A'}",
-                              style: const TextStyle(color: Colors.white70),
-                            ),
-                            onTap: () => onSel(o),
-                          );
-                        },
+              ),
+              if (_latitud != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    children: const [
+                      Icon(Icons.check_circle, color: Colors.green, size: 16),
+                      SizedBox(width: 5),
+                      Text(
+                        "Ubicación GPS capturada",
+                        style: TextStyle(color: Colors.green, fontSize: 12),
                       ),
-                    ),
+                    ],
                   ),
                 ),
-              ),
-            ],
+            ] else
+              _buscadorClientes(colorDorado),
 
             const SizedBox(height: 30),
-            const Divider(color: Colors.white24),
-            const SizedBox(height: 10),
-
-            // --- SECCIÓN DE PAGOS Y FECHAS ---
-            const Text(
-              "PLAN Y FECHAS DE PAGO",
-              style: TextStyle(
-                color: colorDorado,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.2,
-              ),
-            ),
+            _dividerDorado("DATOS DEL PLAN"),
             const SizedBox(height: 15),
 
             DropdownButtonFormField<Map<String, dynamic>>(
               dropdownColor: const Color(0xFF1E1E1E),
               value: _planSeleccionado,
-              decoration: InputDecoration(
-                labelText: "Selecciona un Plan",
-                labelStyle: const TextStyle(color: Colors.white70),
-                enabledBorder: inputBorder,
-                focusedBorder: inputBorderFocus,
-                prefixIcon: const Icon(Icons.inventory_2, color: colorDorado),
-              ),
+              decoration: _dropdownStyle("Seleccionar Plan", colorDorado),
               style: const TextStyle(color: Colors.white),
               items: _listaPlanes
                   .map(
                     (p) => DropdownMenuItem(
                       value: p,
-                      child: Text("${p['nombre']} - \$${p['precio_total']}"),
+                      child: Text("${p['nombre']} (\$${p['precio_total']})"),
                     ),
                   )
                   .toList(),
@@ -481,19 +335,13 @@ class _PantallaNuevoContratoState extends State<PantallaNuevoContrato> {
             ),
 
             const SizedBox(height: 15),
-
             Row(
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     dropdownColor: const Color(0xFF1E1E1E),
                     value: _frecuenciaPago,
-                    decoration: InputDecoration(
-                      labelText: "Frecuencia",
-                      labelStyle: const TextStyle(color: Colors.white70),
-                      enabledBorder: inputBorder,
-                      focusedBorder: inputBorderFocus,
-                    ),
+                    decoration: _dropdownStyle("Frecuencia", colorDorado),
                     style: const TextStyle(color: Colors.white),
                     items: _frecuencias
                         .map((f) => DropdownMenuItem(value: f, child: Text(f)))
@@ -501,137 +349,53 @@ class _PantallaNuevoContratoState extends State<PantallaNuevoContrato> {
                     onChanged: (val) {
                       if (val != null) {
                         setState(() => _frecuenciaPago = val);
-                        _calcularFechaPago(); // Recalcular fecha al cambiar
+                        _calcularFechaPago();
                       }
                     },
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
                   child: _inputCampo(
-                    "Cuota",
+                    "Cuota \$",
                     _montoParcialController,
-                    Icons.monetization_on,
-                    inputBorder,
-                    inputBorderFocus,
+                    Icons.payments,
                     numero: true,
                   ),
                 ),
               ],
             ),
 
-            // --- VISUALIZADOR DE FECHA (CALENDARIO TIPO ALERT) ---
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 20),
-              padding: const EdgeInsets.all(15),
-              decoration: BoxDecoration(
-                color: const Color(0xFF15202B), // Azul muy oscuro
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.blueAccent),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.calendar_month,
-                    color: Colors.blueAccent,
-                    size: 30,
-                  ),
-                  const SizedBox(width: 15),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "PRÓXIMO PAGO TOCA EL:",
-                        style: TextStyle(
-                          color: Colors.blueAccent,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                      Text(
-                        fechaVisual, // Aquí se muestra la fecha calculada
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        "($_frecuenciaPago)",
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+            const SizedBox(height: 20),
+            _visualizadorFecha(),
+            const SizedBox(height: 20),
 
             TextField(
               controller: _engancheController,
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 18,
                 fontWeight: FontWeight.bold,
+                fontSize: 18,
               ),
               decoration: InputDecoration(
-                labelText: "Enganche (Pago Hoy)",
+                labelText: "Enganche recibido hoy",
                 labelStyle: const TextStyle(color: Colors.greenAccent),
-                prefixIcon: const Icon(
-                  Icons.attach_money,
-                  color: Colors.greenAccent,
+                prefixIcon: const Icon(Icons.stars, color: Colors.greenAccent),
+                enabledBorder: const OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.greenAccent),
                 ),
-                enabledBorder: OutlineInputBorder(
-                  borderSide: const BorderSide(color: Colors.greenAccent),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderSide: const BorderSide(
-                    color: Colors.greenAccent,
-                    width: 2,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
+                focusedBorder: const OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.greenAccent, width: 2),
                 ),
               ),
               onChanged: (val) => setState(() {}),
             ),
 
             const SizedBox(height: 30),
-
-            // --- RESUMEN FINAL ---
-            Container(
-              padding: const EdgeInsets.all(15),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: colorDorado.withOpacity(0.3)),
-              ),
-              child: Column(
-                children: [
-                  _filaRes(
-                    "Precio Plan:",
-                    "\$${precio.toStringAsFixed(2)}",
-                    Colors.white,
-                  ),
-                  _filaRes(
-                    "(-) Enganche:",
-                    "\$${enganche.toStringAsFixed(2)}",
-                    Colors.greenAccent,
-                  ),
-                  const Divider(color: Colors.white24),
-                  _filaRes(
-                    "SALDO PENDIENTE:",
-                    "\$${saldo.toStringAsFixed(2)}",
-                    saldo < 0 ? Colors.red : colorDorado,
-                    isBold: true,
-                  ),
-                ],
-              ),
-            ),
-
+            _resumenFinal(precio, enganche, saldo, colorDorado),
             const SizedBox(height: 30),
 
             SizedBox(
@@ -643,69 +407,248 @@ class _PantallaNuevoContratoState extends State<PantallaNuevoContrato> {
                   backgroundColor: colorDorado,
                   foregroundColor: Colors.black,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
                 child: _cargando
                     ? const CircularProgressIndicator(color: Colors.black)
                     : const Text(
-                        "CREAR CONTRATO",
+                        "FINALIZAR CONTRATO",
                         style: TextStyle(
-                          fontSize: 18,
                           fontWeight: FontWeight.bold,
+                          fontSize: 16,
                         ),
                       ),
               ),
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 50),
           ],
         ),
       ),
     );
   }
 
-  Widget _filaRes(String t, String v, Color c, {bool isBold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            t,
-            style: TextStyle(color: Colors.white70, fontSize: isBold ? 16 : 14),
+  // --- COMPONENTES UI ---
+
+  InputDecoration _dropdownStyle(String label, Color dorado) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.white70),
+      enabledBorder: const OutlineInputBorder(
+        borderSide: BorderSide(color: Colors.white24),
+      ),
+      focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: dorado)),
+    );
+  }
+
+  Widget _dividerDorado(String texto) {
+    return Row(
+      children: [
+        Text(
+          texto,
+          style: const TextStyle(
+            color: Color(0xFFD4AF37),
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
           ),
-          Text(
-            v,
+        ),
+        const SizedBox(width: 10),
+        const Expanded(child: Divider(color: Colors.white10)),
+      ],
+    );
+  }
+
+  Widget _selectorTipoCliente(Color dorado) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [_tab(true, "CLIENTE NUEVO"), _tab(false, "YA EXISTENTE")],
+      ),
+    );
+  }
+
+  Widget _tab(bool esNuevo, String label) {
+    bool activo = _esNuevoCliente == esNuevo;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _esNuevoCliente = esNuevo),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: activo ? const Color(0xFFD4AF37) : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
             style: TextStyle(
-              color: c,
-              fontSize: isBold ? 20 : 16,
-              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              color: activo ? Colors.black : Colors.white60,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _inputCampo(
     String label,
-    TextEditingController controller,
-    IconData icon,
-    InputBorder border,
-    InputBorder focusBorder, {
+    TextEditingController ctrl,
+    IconData icon, {
     bool numero = false,
   }) {
     return TextField(
-      controller: controller,
-      keyboardType: numero ? TextInputType.number : TextInputType.text,
+      controller: ctrl,
+      keyboardType: numero
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : TextInputType.text,
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: Colors.white60),
         prefixIcon: Icon(icon, color: Colors.white60),
-        enabledBorder: border,
-        focusedBorder: focusBorder,
+        enabledBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: Colors.white24),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: Color(0xFFD4AF37)),
+        ),
       ),
+    );
+  }
+
+  Widget _buscadorClientes(Color dorado) {
+    return Autocomplete<Map<String, dynamic>>(
+      optionsBuilder: (val) => val.text.isEmpty
+          ? []
+          : _listaClientesExistentes.where(
+              (c) => c['nombre_contacto'].toString().toLowerCase().contains(
+                val.text.toLowerCase(),
+              ),
+            ),
+      displayStringForOption: (c) => c['nombre_contacto'],
+      onSelected: (sel) => setState(() => _clienteExistenteSeleccionado = sel),
+      fieldViewBuilder: (ctx, ctrl, focus, onEdit) => TextField(
+        controller: ctrl,
+        focusNode: focus,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          labelText: "Buscar cliente por nombre...",
+          prefixIcon: Icon(Icons.search, color: dorado),
+          enabledBorder: const OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.white24),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: dorado),
+          ),
+          helperText: _clienteExistenteSeleccionado != null
+              ? "✓ Seleccionado: ${_clienteExistenteSeleccionado!['nombre_contacto']}"
+              : null,
+          helperStyle: const TextStyle(color: Colors.greenAccent),
+        ),
+      ),
+    );
+  }
+
+  Widget _visualizadorFecha() {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1B2A),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blueAccent.withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.calendar_today, color: Colors.blueAccent),
+          const SizedBox(width: 15),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "FECHA DE PRIMER PAGO",
+                style: TextStyle(
+                  color: Colors.blueAccent,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                DateFormat(
+                  'EEEE dd, MMMM',
+                ).format(_fechaProximoPago).toUpperCase(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _resumenFinal(double p, double e, double s, Color d) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF121212),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        children: [
+          _filaResumen(
+            "Total del Plan",
+            "\$${p.toStringAsFixed(2)}",
+            Colors.white,
+          ),
+          const SizedBox(height: 8),
+          _filaResumen(
+            "Enganche hoy",
+            "-\$${e.toStringAsFixed(2)}",
+            Colors.greenAccent,
+          ),
+          const Divider(height: 25, color: Colors.white12),
+          _filaResumen(
+            "RESTANTE POR COBRAR",
+            "\$${s.toStringAsFixed(2)}",
+            d,
+            esBold: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _filaResumen(String t, String v, Color c, {bool esBold = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          t,
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: esBold ? 14 : 13,
+            fontWeight: esBold ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        Text(
+          v,
+          style: TextStyle(
+            color: c,
+            fontSize: esBold ? 20 : 15,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
     );
   }
 }

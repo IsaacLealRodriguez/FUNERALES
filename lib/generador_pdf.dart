@@ -1,9 +1,11 @@
+import 'package:flutter/material.dart'; // Necesario para la pantalla visual
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 
+// --- CLASE 1: LÓGICA (El cerebro que arma el PDF) ---
 class GeneradorPDF {
   static Future<void> generarRecibo({
     required String nombreCliente,
@@ -15,13 +17,14 @@ class GeneradorPDF {
     final pdf = pw.Document();
     final fechaHoy = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
 
-    // Intentamos cargar el logo. Si falla, usamos un icono o nada.
+    // Intentamos cargar el logo. Si falla, usamos nada.
     pw.MemoryImage? imageLogo;
     try {
-      final imageBytes = await rootBundle.load('assets/negro.png');
+      final imageBytes = await rootBundle.load(
+        'assets/blanco.png',
+      ); // Asegúrate que este archivo exista
       imageLogo = pw.MemoryImage(imageBytes.buffer.asUint8List());
     } catch (e) {
-      // Si no encuentra la imagen, no pasa nada, sigue sin logo
       print("No se pudo cargar el logo para el PDF: $e");
     }
 
@@ -32,7 +35,7 @@ class GeneradorPDF {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
-              // --- LOGO (Si existe) ---
+              // --- LOGO ---
               if (imageLogo != null)
                 pw.Container(height: 60, width: 60, child: pw.Image(imageLogo)),
 
@@ -150,6 +153,52 @@ class GeneradorPDF {
     // Muestra la vista previa
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => pdf.save(),
+    );
+  }
+}
+
+// --- CLASE 2: VISUAL (La pantalla con el botón) ---
+// Esta es la que usa el menú lateral
+class PantallaImprimir extends StatelessWidget {
+  const PantallaImprimir({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Imprimir Documentos"),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.print, size: 80, color: Colors.grey),
+            const SizedBox(height: 20),
+            const Text("Prueba de Impresión"),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () {
+                // LLAMADA DE PRUEBA
+                GeneradorPDF.generarRecibo(
+                  nombreCliente: "Cliente de Prueba",
+                  nombrePlan: "Plan Básico",
+                  montoAbono: 500.00,
+                  saldoRestante: 1500.00,
+                  folioPago: "TEST-001",
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD4AF37),
+                foregroundColor: Colors.black,
+              ),
+              icon: const Icon(Icons.receipt_long),
+              label: const Text("Generar Recibo de Prueba"),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

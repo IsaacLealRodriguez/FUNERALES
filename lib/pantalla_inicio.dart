@@ -30,34 +30,23 @@ class _PantallaInicioState extends State<PantallaInicio> {
     _calcularMetricas();
   }
 
-  // --- FUNCIÓN PARA CALCULAR DINERO ---
+  // --- FUNCIÓN PARA CALCULAR DINERO (100% OPTIMIZADA) ---
   Future<void> _calcularMetricas() async {
     final supabase = Supabase.instance.client;
     final hoy = DateTime.now();
     final inicioDia = DateTime(hoy.year, hoy.month, hoy.day).toIso8601String();
 
     try {
-      // 1. Calcular lo cobrado HOY (Tabla pagos)
-      final pagosHoy = await supabase
-          .from('pagos')
-          .select('monto')
-          .gte('fecha_pago', inicioDia); // Pagos desde las 00:00 de hoy
+      // 1. Calcular cobrado hoy (Rápido vía RPC)
+      final responseHoy = await supabase.rpc(
+        'sumar_pagos_desde',
+        params: {'inicio_dia': inicioDia},
+      );
+      double sumaHoy = (responseHoy as num).toDouble();
 
-      double sumaHoy = 0.0;
-      for (var p in pagosHoy) {
-        sumaHoy += (p['monto'] as num).toDouble();
-      }
-
-      // 2. Calcular deuda total (Tabla contratos activos)
-      final contratosActivos = await supabase
-          .from('contratos')
-          .select('saldo_pendiente')
-          .eq('estado', 'Activo');
-
-      double sumaDeuda = 0.0;
-      for (var c in contratosActivos) {
-        sumaDeuda += (c['saldo_pendiente'] as num).toDouble();
-      }
+      // 2. Calcular deuda total (Rápido vía RPC)
+      final responseDeuda = await supabase.rpc('sumar_deuda_total');
+      double sumaDeuda = (responseDeuda as num).toDouble();
 
       if (mounted) {
         setState(() {
@@ -68,6 +57,12 @@ class _PantallaInicioState extends State<PantallaInicio> {
       }
     } catch (e) {
       debugPrint("Error métricas: $e");
+      // Si hay error, al menos detenemos la ruedita de carga
+      if (mounted) {
+        setState(() {
+          _cargandoMetricas = false;
+        });
+      }
     }
   }
 
@@ -98,8 +93,8 @@ class _PantallaInicioState extends State<PantallaInicio> {
             margin: const EdgeInsets.all(15),
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [const Color(0xFF1E1E1E), Colors.black],
+              gradient: const LinearGradient(
+                colors: [Color(0xFF1E1E1E), Colors.black],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -211,10 +206,11 @@ class _PantallaInicioState extends State<PantallaInicio> {
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: _contratosStream,
               builder: (context, snapshot) {
-                if (!snapshot.hasData)
+                if (!snapshot.hasData) {
                   return const Center(
                     child: CircularProgressIndicator(color: colorDorado),
                   );
+                }
 
                 final contratos = snapshot.data!;
                 if (contratos.isEmpty) {
@@ -231,12 +227,6 @@ class _PantallaInicioState extends State<PantallaInicio> {
                   itemCount: contratos.length,
                   itemBuilder: (context, index) {
                     final contrato = contratos[index];
-
-                    // Supabase a veces trae las relaciones anidadas si configuramos la foreign key,
-                    // pero en el stream simple a veces solo trae el ID.
-                    // Para simplificar el Dashboard, haremos una consulta inteligente.
-                    // NOTA: Si ves "Instance of..." aquí, avísame y ajustamos la consulta.
-
                     return _TarjetaContratoSimple(contrato: contrato);
                   },
                 );
@@ -267,7 +257,6 @@ class _PantallaInicioState extends State<PantallaInicio> {
 }
 
 // Widget separado para manejar la carga de datos del cliente individualmente
-// Esto evita que el stream principal se complique
 class _TarjetaContratoSimple extends StatefulWidget {
   final Map<String, dynamic> contrato;
   const _TarjetaContratoSimple({required this.contrato});

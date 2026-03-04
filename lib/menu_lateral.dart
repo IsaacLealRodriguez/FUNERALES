@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Importamos tus pantallas para la navegación
+// Importamos tus pantallas
 import 'pantalla_inicio.dart';
 import 'pantalla_clientes.dart';
 import 'pantalla_planes.dart';
 import 'pantalla_liquidados.dart';
 import 'pantalla_login.dart';
 import 'pantallaRutaCobro.dart';
+import 'generador_pdf.dart'; // <--- Import correcto
 
 class MenuLateral extends StatelessWidget {
   const MenuLateral({super.key});
@@ -18,19 +19,17 @@ class MenuLateral extends StatelessWidget {
     const colorDorado = Color(0xFFD4AF37);
 
     return Drawer(
-      backgroundColor: const Color(0xFF1E1E1E), // Gris oscuro elegante
+      backgroundColor: const Color(0xFF1E1E1E),
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          // CABECERA DEL MENÚ
+          // CABECERA
           UserAccountsDrawerHeader(
             decoration: const BoxDecoration(
               color: Colors.black,
               image: DecorationImage(
-                image: AssetImage(
-                  'assets/blanco.png',
-                ), // Tu logo de fondo suave si quieres
-                opacity: 0.1, // Muy transparente para que no estorbe
+                image: AssetImage('assets/blanco.png'),
+                opacity: 0.1,
                 fit: BoxFit.cover,
               ),
             ),
@@ -81,13 +80,13 @@ class MenuLateral extends StatelessWidget {
           ),
 
           const Divider(color: Colors.white24),
+
           // --- BOTÓN RUTA DE COBRO ---
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    Colors.green, // Color verde para indicar dinero/cobro
+                backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.all(20),
                 shape: RoundedRectangleBorder(
@@ -96,6 +95,7 @@ class MenuLateral extends StatelessWidget {
                 elevation: 5,
               ),
               onPressed: () {
+                Navigator.pop(context); // Cerramos menú antes de ir
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -103,10 +103,7 @@ class MenuLateral extends StatelessWidget {
                   ),
                 );
               },
-              icon: const Icon(
-                Icons.map_outlined,
-                size: 30,
-              ), // Icono de mapa/ruta
+              icon: const Icon(Icons.map_outlined, size: 30),
               label: const Text(
                 "IR A RUTA DE COBRO",
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -141,7 +138,7 @@ class MenuLateral extends StatelessWidget {
     );
   }
 
-  // Widget auxiliar para crear botones de menú rápido
+  // Widget auxiliar
   Widget _itemMenu(
     BuildContext context,
     IconData icon,
@@ -152,7 +149,6 @@ class MenuLateral extends StatelessWidget {
       leading: Icon(icon, color: Colors.white),
       title: Text(texto, style: const TextStyle(color: Colors.white)),
       onTap: () {
-        // Cierra el menú y va a la pantalla
         Navigator.pop(context);
         Navigator.push(
           context,

@@ -8,6 +8,9 @@ environment:
   sdk: ^3.10.8
 
 dependencies:
+
+  open_street_map_search_and_pick: 0.1.1
+  url_launcher: ^6.3.0
   flutter:
     sdk: flutter
 
